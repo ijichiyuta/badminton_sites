@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>バドミントン戦績DB構想 — データソース徹底調査レポート</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<style>
+  body { margin: 0; background: var(--bgColor-default, #ffffff); }
+  .markdown-body {
+    box-sizing: border-box;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+  .markdown-body table { display: block; overflow-x: auto; font-size: 13px; }
+  .markdown-body td, .markdown-body th { min-width: 60px; }
+  #toc {
+    border: 1px solid var(--borderColor-default, #d1d9e0);
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin-bottom: 24px;
+    font-size: 14px;
+  }
+  #toc a { display: block; padding: 2px 0; text-decoration: none; }
+  #loading { padding: 48px; text-align: center; color: #888; font-family: sans-serif; }
+</style>
+</head>
+<body>
+<article class="markdown-body">
+  <nav id="toc"></nav>
+  <div id="content"><p id="loading">読み込み中…</p></div>
+</article>
+<script>
+fetch('2026-07-27_badminton-data-survey.md')
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then(md => {
+    document.getElementById('content').innerHTML = marked.parse(md, { gfm: true });
+    const toc = document.getElementById('toc');
+    const heads = document.querySelectorAll('#content h2');
+    toc.innerHTML = '<strong>目次</strong>';
+    heads.forEach((h, i) => {
+      h.id = 'sec' + i;
+      const a = document.createElement('a');
+      a.href = '#sec' + i;
+      a.textContent = h.textContent;
+      toc.appendChild(a);
+    });
+  })
+  .catch(e => {
+    document.getElementById('content').innerHTML =
+      '<p>レポートの読み込みに失敗しました: ' + e + '</p>';
+  });
+</script>
+</body>
+</html>

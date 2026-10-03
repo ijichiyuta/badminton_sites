@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>愛知県高校バドミントン戦績DB（試作）</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #1a202c; --sub: #64748b;
+    --accent: #0e7490; --accent-soft: #e0f2f7; --line: #e2e8f0;
+    --win: #059669; --lose: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+         background: var(--bg); color: var(--ink); font-size: 15px; }
+  header { background: var(--accent); color: #fff; padding: 14px 20px; }
+  header h1 { font-size: 17px; margin: 0; display: inline-block; cursor: pointer; }
+  header .tag { font-size: 11px; background: rgba(255,255,255,.2); padding: 2px 8px;
+                border-radius: 10px; margin-left: 8px; vertical-align: 2px; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 16px 18px; margin-bottom: 14px; }
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; }
+  .stats div b { font-size: 22px; display: block; color: var(--accent); }
+  .stats div span { font-size: 12px; color: var(--sub); }
+  input[type=search] { width: 100%; padding: 10px 14px; font-size: 16px;
+        border: 1px solid var(--line); border-radius: 8px; outline-color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--sub); font-weight: 600; font-size: 12px; }
+  a { color: var(--accent); text-decoration: none; cursor: pointer; }
+  a:hover { text-decoration: underline; }
+  .muted { color: var(--sub); font-size: 12.5px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 9px;
+          background: var(--accent-soft); color: var(--accent); margin-right: 6px; }
+  .W { color: var(--win); font-weight: 700; }
+  .L { color: var(--lose); font-weight: 700; }
+  h2 { font-size: 18px; margin: 6px 0 2px; }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--sub); }
+  .tlist a { display: block; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+  .notice { font-size: 12px; color: var(--sub); line-height: 1.7; }
+  .result-list { max-height: 420px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<header><h1 onclick="location.hash=''">🏸 愛知県高校バドミントン戦績DB</h1><span class="tag">試作・非公開プレビュー</span></header>
+<main id="app"><p class="muted">読み込み中…</p></main>
+<script>
+let DB = null;
+const $ = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d; };
+const esc = (s) => (s ?? '').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tmap = () => Object.fromEntries(DB.tournaments.map(t => [t.id, t]));
+
+function score(sa, sb) {
+  if (!sa.length || !sb.length) return '';
+  return sa.map((a, i) => `${a}-${sb[i] ?? '?'}`).join(' ');
+}
+
+function home() {
+  const t = DB.tournaments.slice().sort((a, b) => b.year - a.year || a.id.localeCompare(b.id));
+  return `
+  <div class="card"><div class="stats">
+    <div><b>${DB.tournaments.length}</b><span>大会</span></div>
+    <div><b>${DB.matches.length.toLocaleString()}</b><span>確定試合</span></div>
+    <div><b>${DB.players.length.toLocaleString()}</b><span>選手</span></div>
+    <div><b>2021–2026</b><span>年度</span></div>
+  </div></div>
+  <div class="card">
+    <input type="search" id="q" placeholder="選手名・学校名で検索（例: 名経大市邨）" autocomplete="off">
+    <div id="hits"></div>
+  </div>
+  <div class="card"><h2>大会一覧</h2><div class="tlist">
+    ${t.map(x => `<a href="#t/${x.id}">${x.year}年度 ${esc(x.label)} <span class="muted">確定 ${x.matches}試合 / 出場 ${x.entrants}</span></a>`).join('')}
+  </div></div>
+  <div class="card notice">
+    出典: 愛知県高等学校体育連盟が公開する大会結果PDFから事実情報（選手名・所属・スコア）のみを抽出。
+    トーナメント表PDF自体の転載はしていません。<br>
+    本ページはパーサ精度検証中の<b>非公開プレビュー</b>です。勝敗・対戦の両方が機械的に確定できた試合のみ表示しています
+    （古い年度のPDFは判定率が低く、試合が欠けています）。<br>
+    公開時には削除・訂正依頼窓口とプライバシーポリシーを設置予定。
+  </div>`;
+}
+
+function bindSearch() {
+  const q = document.getElementById('q');
+  if (!q) return;
+  q.addEventListener('input', () => {
+    const v = q.value.trim();
+    const hits = document.getElementById('hits');
+    if (v.length < 1) { hits.innerHTML = ''; return; }
+    const rs = DB.players.filter(p =>
+      p.name.replace(/\s/g, '').includes(v.replace(/\s/g, '')) ||
+      (p.school || '').includes(v)).slice(0, 50);
+    hits.innerHTML = '<div class="result-list">' + rs.map(p =>
+      `<a href="#p/${encodeURIComponent(p.key)}" style="display:block;padding:6px 2px;border-bottom:1px solid var(--line)">
+        ${esc(p.name)} <span class="muted">${esc(p.school || '')}・出場${p.apps.length}回</span></a>`).join('') +
+      (rs.length === 0 ? '<p class="muted">該当なし</p>' : '') + '</div>';
+  });
+  q.focus();
+}
+
+function playerPage(key) {
+  const p = DB.players.find(x => x.key === key);
+  if (!p) return '<div class="card">選手が見つかりません</div>';
+  const T = tmap();
+  const ms = DB.matches.filter(m => m.pa.includes(key) || m.pb.includes(key));
+  ms.sort((a, b) => T[b.t].year - T[a.t].year || (a.event > b.event ? 1 : -1) || a.ord - b.ord);
+  let wins = 0;
+  const rows = ms.map(m => {
+    const isA = m.pa.includes(key);
+    const me = isA ? m.a : m.b, opp = isA ? m.b : m.a;
+    const won = m.winner === me;
+    if (won) wins++;
+    const sc = isA ? score(m.sa, m.sb) : score(m.sb, m.sa);
+    return `<tr>
+      <td class="muted">${T[m.t].year} ${esc(T[m.t].label)}</td>
+      <td><span class="pill">${esc(m.event)}</span>${esc(m.round)}</td>
+      <td>${opplink(opp)}</td>
+      <td>${sc || '<span class="muted">—</span>'}</td>
+      <td class="${won ? 'W' : 'L'}">${won ? '勝' : '敗'}</td></tr>`;
+  }).join('');
+  const apps = p.apps.map(a => `${T[a.t].year}${T[a.t].series}(${esc(a.event)})`).join('・');
+  return `<div class="card">
+    <h2>${esc(p.name)} <span class="muted">${esc(p.school || '')}</span></h2>
+    <p class="muted">出場: ${apps}</p>
+    <p>確定試合 ${ms.length}試合 <span class="W">${wins}勝</span> <span class="L">${ms.length - wins}敗</span></p>
+    <table><tr><th>大会</th><th>種目・回戦</th><th>対戦相手</th><th>スコア</th><th></th></tr>${rows}</table>
+  </div>`;
+}
+
+function opplink(raw) {
+  // 「姓 名･姓 名(校)」の各選手をリンク化
+  const m = raw.match(/^(.*?)[（(]([^（()）]+)[）)]\s*$/);
+  if (!m) return esc(raw);
+  const school = m[2];
+  const names = m[1].split(/[･・]/);
+  return names.map(n => {
+    const key = n.replace(/[\s　]/g, '') + '|' + school;
+    const ex = DB.players.some(p => p.key === key);
+    return ex ? `<a href="#p/${encodeURIComponent(key)}">${esc(n.trim())}</a>` : esc(n.trim());
+  }).join('･') + `<span class="muted">(${esc(school)})</span>`;
+}
+
+function tournamentPage(tid) {
+  const T = tmap()[tid];
+  if (!T) return '<div class="card">大会が見つかりません</div>';
+  const sts = DB.standings.filter(s => s.t === tid);
+  const finals = DB.matches.filter(m => m.t === tid && (m.round === '決勝' || m.round === '準決勝'));
+  finals.sort((a, b) => (a.event > b.event ? 1 : -1) || b.ord - a.ord);
+  return `<div class="card"><h2>${T.year}年度 ${esc(T.label)}</h2>
+    <p class="muted">確定 ${T.matches}試合 / 出場エントリ ${T.entrants}</p>
+    <h3>決勝・準決勝</h3>
+    <table><tr><th>種目</th><th>回戦</th><th>対戦</th><th>勝者</th></tr>
+    ${finals.map(m => `<tr><td><span class="pill">${esc(m.event)}</span></td><td>${esc(m.round)}</td>
+      <td>${opplink(m.a)}<br>${opplink(m.b)}</td><td>${opplink(m.winner)}</td></tr>`).join('')}
+    </table>
+    ${sts.map(s => `<h3>${esc(s.event)} 順位</h3>
+      <table>${s.rows.map(r => `<tr><td style="width:36px">${r.rank}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>`).join('')}
+  </div>`;
+}
+
+function render() {
+  const app = document.getElementById('app');
+  const h = location.hash;
+  if (h.startsWith('#p/')) app.innerHTML = playerPage(decodeURIComponent(h.slice(3)));
+  else if (h.startsWith('#t/')) app.innerHTML = tournamentPage(h.slice(3));
+  else { app.innerHTML = home(); bindSearch(); }
+  window.scrollTo(0, 0);
+}
+
+fetch('data.json').then(r => r.json()).then(d => {
+  DB = d;
+  window.addEventListener('hashchange', render);
+  render();
+}).catch(e => {
+  document.getElementById('app').innerHTML = `<div class="card">データ読み込み失敗: ${e}</div>`;
+});
+</script>
+</body>
+</html>
